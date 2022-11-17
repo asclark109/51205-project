@@ -39,6 +39,8 @@ services:
     tty: true
     stdin_open: true
     restart: on-failure                 # restarts container when it goes down
+    volumes:
+      - ${PROJECT_DIR}/auctions-service:/go/src/auctions-service-debug
     networks:
       - my-application-network
     ports:

@@ -9,8 +9,7 @@ type Item struct {
 	SellerUserId      string
 	StartTime         time.Time
 	EndTime           time.Time
-	StartPriceInCents int64 // to avoid floating point errors, store money as cents (int)
-	// e.g. 7200 == $72.00
+	StartPriceInCents int64 // to avoid floating point errors, store money as cents (int); e.g. 7200 = $72.00
 }
 
 func NewItem(itemId, sellerUserId string, startTime, endTime time.Time, startPriceInCents int64) *Item {

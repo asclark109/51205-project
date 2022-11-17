@@ -33,12 +33,20 @@ func (bid *Bid) Outbids(otherBid *Bid) bool {
 	return false
 }
 
-func (bid *Bid) Activate() {
-	bid.active = true
+func (bid *Bid) Activate() bool {
+	if !bid.active {
+		bid.active = true
+		return true
+	}
+	return false
 }
 
-func (bid *Bid) Deactivate() {
-	bid.active = false
+func (bid *Bid) Deactivate() bool {
+	if bid.active {
+		bid.active = false
+		return true
+	}
+	return false
 }
 
 func (bid *Bid) IsActive() bool {

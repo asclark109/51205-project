@@ -17,7 +17,7 @@ func TestGetBid(t *testing.T) {
 	bid3 := NewBid("102", "201", "sammy2", timeReceived, 4000, true)  // $40
 	bid4 := NewBid("103", "201", "asclark", timeReceived, 4000, true) // $40
 
-	bidRepo := NewInMemoryBidRepository()
+	bidRepo := NewInMemoryBidRepository(true)
 
 	bidRepo.SaveBid(bid1)
 	bidRepo.SaveBid(bid2)
@@ -51,7 +51,7 @@ func TestSaveBid(t *testing.T) {
 	bid3 := NewBid("102", "201", "sammy2", timeReceived, 4000, true)  // $40
 	bid4 := NewBid("103", "201", "asclark", timeReceived, 4000, true) // $40
 
-	bidRepo := NewInMemoryBidRepository()
+	bidRepo := NewInMemoryBidRepository(true)
 
 	bidRepo.SaveBid(bid1)
 	bidRepo.SaveBid(bid2)
@@ -98,7 +98,7 @@ func TestGetBidsByUserId(t *testing.T) {
 	bid3 := NewBid("102", "201", "sammy2", timeReceived, 4000, true)  // $40
 	bid4 := NewBid("103", "201", "asclark", timeReceived, 4000, true) // $40
 
-	bidRepo := NewInMemoryBidRepository()
+	bidRepo := NewInMemoryBidRepository(true)
 
 	bidRepo.SaveBid(bid1)
 	bidRepo.SaveBid(bid2)
@@ -126,7 +126,7 @@ func TestGetBidsByItemId(t *testing.T) {
 	bid4 := NewBid("103", "201", "asclark", timeReceived, 4000, true) // $40
 	bid5 := NewBid("104", "202", "asclark", timeReceived, 4000, true) // $40
 
-	bidRepo := NewInMemoryBidRepository()
+	bidRepo := NewInMemoryBidRepository(true)
 
 	bidRepo.SaveBid(bid1)
 	bidRepo.SaveBid(bid2)

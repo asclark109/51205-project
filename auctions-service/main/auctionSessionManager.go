@@ -1,8 +1,6 @@
 package main
 
 import (
-	"auctions-service/domain"
-	"sync"
 	"time"
 )
 
@@ -17,22 +15,18 @@ const (
 )
 
 type AuctionSessionManager struct {
-	inMemoryAuctions  *map[string]*domain.Auction
-	mutex             *sync.Mutex
-	auctionRepository domain.AuctionRepository
-	turnedOn          bool
-	lastAlertTime     time.Time
-	lastFinalizeTime  time.Time
-	lastLoadTime      time.Time
-	alertCycle        time.Duration
-	finalizeCycle     time.Duration
-	loadCycle         time.Duration
+	auctionsservice  *AuctionService
+	turnedOn         bool
+	lastAlertTime    time.Time
+	lastFinalizeTime time.Time
+	lastLoadTime     time.Time
+	alertCycle       time.Duration
+	finalizeCycle    time.Duration
+	loadCycle        time.Duration
 }
 
 func NewAuctionSessionManager(
-	inMemoryAuctions *map[string]*domain.Auction,
-	mutex *sync.Mutex,
-	auctionRepo domain.AuctionRepository,
+	auctionsservice *AuctionService,
 	alertCycle time.Duration,
 	finalizeCycle time.Duration,
 	loadAuctionCycle time.Duration,
@@ -43,9 +37,7 @@ func NewAuctionSessionManager(
 	lastLoadTime := time.Now()
 
 	return &AuctionSessionManager{
-		inMemoryAuctions,
-		mutex,
-		auctionRepo,
+		auctionsservice,
 		false,
 		lastAlertTime,
 		lastFinalizeTime,
@@ -66,10 +58,10 @@ func (auctionSessionManager *AuctionSessionManager) TurnOn() {
 		// bring into memory all auctions with lifecycles (start->end) overlapping with the following time span
 		since := time.Now().Add(-loadBehindDuration) // assumes all auctions prior to this time have been finalized
 		upTo := time.Now().Add(loadAheadDuration)
-		auctionSessionManager.loadInAuctions(since, upTo)
-		auctionSessionManager.loadInAuctions(since, upTo)
-		auctionSessionManager.sendOutLifecycleAlerts()
-		auctionSessionManager.finalizeAnyPastAuctions()
+		// auctionSessionManager.loadAuctionsIntoMemory(since, upTo)
+		auctionSessionManager.auctionsservice.LoadAuctionsIntoMemory(since, upTo)
+		auctionSessionManager.auctionsservice.SendOutLifeCycleAlerts()
+		auctionSessionManager.auctionsservice.FinalizeAnyPastAuctions(FinalizeDelay)
 
 		go auctionSessionManager.intermittentlyLoadAuctions()
 		go auctionSessionManager.intermittentlySendLifeCycleAlerts()
@@ -88,7 +80,7 @@ func (auctionSessionManager *AuctionSessionManager) intermittentlyLoadAuctions()
 		if time.Since(auctionSessionManager.lastLoadTime) >= auctionSessionManager.loadCycle {
 			since := auctionSessionManager.lastLoadTime.Add(loadAheadDuration)
 			upTo := time.Now().Add(loadAheadDuration)
-			auctionSessionManager.loadInAuctions(since, upTo) // acquires lock
+			auctionSessionManager.auctionsservice.LoadAuctionsIntoMemory(since, upTo) // acquires lock
 			auctionSessionManager.lastLoadTime = time.Now()
 		}
 	}
@@ -99,7 +91,7 @@ func (auctionSessionManager *AuctionSessionManager) intermittentlySendLifeCycleA
 		if time.Since(auctionSessionManager.lastAlertTime) >= auctionSessionManager.alertCycle {
 			// since := auctionSessionManager.lastAlertTime.Add(loadAheadDuration)
 			// upTo := time.Now().Add(loadAheadDuration)
-			auctionSessionManager.sendOutLifecycleAlerts() // acquires lock
+			auctionSessionManager.auctionsservice.SendOutLifeCycleAlerts() // acquires lock
 			auctionSessionManager.lastAlertTime = time.Now()
 		}
 	}
@@ -110,58 +102,8 @@ func (auctionSessionManager *AuctionSessionManager) intermittentlyFinalizeAuctio
 		if time.Since(auctionSessionManager.lastFinalizeTime) >= auctionSessionManager.finalizeCycle {
 			// since := auctionSessionManager.lastLoadTime.Add(loadAheadDuration)
 			// upTo := time.Now().Add(loadAheadDuration)
-			auctionSessionManager.finalizeAnyPastAuctions() // acquires lock
+			auctionSessionManager.auctionsservice.FinalizeAnyPastAuctions(FinalizeDelay) // acquires lock
 			auctionSessionManager.lastFinalizeTime = time.Now()
 		}
 	}
-}
-
-func (auctionSessionManager *AuctionSessionManager) loadInAuctions(sinceTime time.Time, upToTime time.Time) {
-
-	inMemAuctions := auctionSessionManager.inMemoryAuctions
-
-	auctionSessionManager.mutex.Lock()
-
-	auctions := auctionSessionManager.auctionRepository.GetAuctions(sinceTime, upToTime)
-	for _, auction := range auctions {
-		if !auction.IsFinalized() { // dont bring into memory if it is a finalized auction
-			if _, ok := (*inMemAuctions)[auction.Item.ItemId]; !ok {
-				(*inMemAuctions)[auction.Item.ItemId] = auction
-			}
-		}
-
-	}
-	auctionSessionManager.mutex.Unlock()
-}
-
-func (auctionSessionManager *AuctionSessionManager) sendOutLifecycleAlerts() {
-	inMemAuctions := auctionSessionManager.inMemoryAuctions
-	var sentNotif1, sentNotif2 bool
-
-	auctionSessionManager.mutex.Lock()
-
-	for _, auction := range *inMemAuctions {
-		sentNotif1 = auction.SendStartSoonAlertIfApplicable()
-		sentNotif2 = auction.SendEndSoonAlertIfApplicable()
-		if sentNotif1 || sentNotif2 {
-			auctionSessionManager.auctionRepository.SaveAuction(auction) // save the knowledge that alert was sent out;
-		}
-	}
-
-	auctionSessionManager.mutex.Unlock()
-}
-
-func (auctionSessionManager *AuctionSessionManager) finalizeAnyPastAuctions() {
-	inMemAuctions := auctionSessionManager.inMemoryAuctions
-
-	auctionSessionManager.mutex.Lock()
-
-	for _, auction := range *inMemAuctions {
-		if time.Since(auction.Item.EndTime) >= FinalizeDelay && !auction.IsFinalized() {
-			auction.Finalize()
-			auctionSessionManager.auctionRepository.SaveAuction(auction) // save the knowledge that we finalized the auction
-		}
-	}
-
-	auctionSessionManager.mutex.Unlock()
 }

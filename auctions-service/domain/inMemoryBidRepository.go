@@ -1,10 +1,21 @@
 package domain
 
+import (
+	"math/rand"
+
+	"github.com/google/uuid"
+)
+
 type inMemoryBidRepository struct {
 	bids []*Bid
 }
 
-func NewInMemoryBidRepository() BidRepository {
+func NewInMemoryBidRepository(useDeterministicSeed bool) BidRepository {
+	if useDeterministicSeed {
+		seed := int64(1)
+		rnd := rand.New(rand.NewSource(seed))
+		uuid.SetRand(rnd)
+	}
 	bids := []*Bid{}
 	return &inMemoryBidRepository{bids}
 }
@@ -46,4 +57,8 @@ func (repo *inMemoryBidRepository) SaveBid(bidToSave *Bid) {
 	}
 	// else its new
 	repo.bids = append(repo.bids, bidToSave)
+}
+
+func (repo *inMemoryBidRepository) NextBidId() string {
+	return uuid.New().String()
 }

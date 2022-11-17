@@ -287,8 +287,8 @@ func stopAuction(auctionservice *AuctionService) http.HandlerFunc {
 func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// var res itemIds
-		vars := mux.Vars(r)
-		itemId := vars["itemId"]
+		// vars := mux.Vars(r)
+		// itemId := vars["itemId"]
 
 		// reqBody, _ := ioutil.ReadAll(r.Body) // read details
 
@@ -318,9 +318,7 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 		// 	return
 		// }
 
-		fmt.Println(itemId)
-
-		// itemId := requestBody.ItemId
+		itemId := requestBody.ItemId
 		sellerUserId := requestBody.SellerUserId
 		startTime, err1 := interpretTimeStr(requestBody.StartTime)
 		endTime, err2 := interpretTimeStr(requestBody.EndTime)
@@ -400,6 +398,112 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 		// 	// todos = append(todos, res)
 		// 	fmt.Println(res)
 		// }
+	}
+}
+
+func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// var res itemIds
+		// vars := mux.Vars(r)
+		// itemId := vars["itemId"]
+
+		// reqBody, _ := ioutil.ReadAll(r.Body) // read details
+
+		var requestBody RequestProcessNewBid // parse request into a struct with assumed structure
+		// err := json.Unmarshal(reqBody, &requestBody)
+		err := json.NewDecoder(r.Body).Decode(&requestBody)
+
+		fmt.Println(requestBody)
+		var response ResponseProcessNewBid
+
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			response.Msg = "request body was ill-formed"
+
+			// json.Marshal()
+			json.NewEncoder(w).Encode(response)
+			return
+			// w.Write(js)
+		}
+
+		// interpret body
+
+		// js, err := json.Marshal(response)
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	return
+		// }
+
+		itemId := requestBody.ItemId
+		bidderUserId := requestBody.BidderUserId
+		timeReceived := time.Now()
+		amountInCents := requestBody.AmountInCents
+
+		if amountInCents < 0 {
+			response.Msg = "bid money amount was negative integer."
+			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		auctionInteractionOutcome, auctionState, wasNewTopBid := auctionservice.ProcessNewBid(itemId, bidderUserId, timeReceived, amountInCents)
+
+		// createAuctionOutcome := auctionservice.CreateAuction(itemId, sellerUserId, startTime, endTime, startPriceInCents)
+
+		// var response ResponseCreateAuction
+
+		if auctionInteractionOutcome == auctionNotExist {
+			response.Msg = "auction does not exist."
+			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		if auctionState == domain.PENDING {
+			response.Msg = "auction has not yet started."
+			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		if auctionState == domain.OVER {
+			response.Msg = "auction is already over."
+			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		if auctionState == domain.FINALIZED {
+			response.Msg = "auction has already been finalized (archived)."
+			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		// success case 1
+		if auctionState == domain.ACTIVE && !wasNewTopBid {
+			response.Msg = "bid was not a new top bid because it was under start price or under the current top bid price."
+			response.WasNewTopBid = false
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		// success case 1
+		if auctionState == domain.ACTIVE && wasNewTopBid {
+			response.Msg = "successfully processed bid; bid was new top bid!"
+			response.WasNewTopBid = true
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		panic("see processNewBid() in main.go; could not determine an outcome for place new Bid request")
+
 	}
 }
 
@@ -503,7 +607,7 @@ func handleNewBids(auctionservice *AuctionService) {
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
 			// characterize
-			auctionservice.ProcessNewBid()
+			// auctionservice.ProcessNewBid()
 		}
 	}()
 
@@ -526,7 +630,8 @@ func handleHTTPAPIRequests(auctionservice *AuctionService) {
 	// define all REST/HTTP API endpoints below
 	apiVersion := "v1"
 	myRouter.HandleFunc("/", homePage)
-	myRouter.HandleFunc(fmt.Sprintf("/api/%s/Auctions/{itemId}", apiVersion), createAuction(auctionservice)).Methods("POST")
+	myRouter.HandleFunc(fmt.Sprintf("/api/%s/Auctions/", apiVersion), createAuction(auctionservice)).Methods("POST")
+	myRouter.HandleFunc(fmt.Sprintf("/api/%s/Bids/", apiVersion), processNewBid(auctionservice)).Methods("POST")
 	myRouter.HandleFunc(fmt.Sprintf("/api/%s/cancelAuction/{itemId}", apiVersion), cancelAuction(auctionservice))
 	myRouter.HandleFunc(fmt.Sprintf("/api/%s/stopAuction/{itemId}", apiVersion), stopAuction(auctionservice))
 	myRouter.HandleFunc(fmt.Sprintf("/api/%s/ItemsUserHasBidsOn/{userId}", apiVersion), getItemsUserHasBidsOn(auctionservice)).Methods("GET")
@@ -555,7 +660,7 @@ func main() {
 	// 	Article{Title: "Hello", Desc: "Article Description", Content: "Article Content"},
 	// 	Article{Title: "Hello 2", Desc: "Article Description", Content: "Article Content"},
 	// }
-	bidRepo := domain.NewInMemoryBidRepository()
+	bidRepo := domain.NewInMemoryBidRepository(false) // do not use seed; assign random uuid's
 	auctionRepo := domain.NewInMemoryAuctionRepository()
 
 	// fill bid repo with some bids
@@ -576,17 +681,17 @@ func main() {
 	endtime := time.Date(2014, 2, 4, 01, 30, 00, 0, time.UTC)                    // 30 min later
 	item1 := domain.NewItem("101", "asclark109", startime, endtime, int64(2000)) // $20 start price
 	item2 := domain.NewItem("102", "asclark109", startime, endtime, int64(2000)) // $20 start price
-	auction1 := domain.NewAuction(item1, nil, nil, false, false, false)          // will go to completion
-	auction2 := domain.NewAuction(item2, nil, nil, false, false, false)          // will get cancelled halfway through
+	auction1 := domain.NewAuction(item1, nil, nil, false, false, nil)            // will go to completion
+	auction2 := domain.NewAuction(item2, nil, nil, false, false, nil)            // will get cancelled halfway through
 
 	nowtime := time.Now()
 	latertime := nowtime.Add(time.Duration(4) * time.Hour)                        // 4 hrs from now
 	item3 := domain.NewItem("103", "asclark109", nowtime, latertime, int64(2000)) // $20 start price
-	auctionactive := domain.NewAuction(item3, nil, nil, false, false, false)
+	auctionactive := domain.NewAuction(item3, nil, nil, false, false, nil)
 
 	latertime2 := nowtime.Add(time.Duration(2) * time.Hour)                        // 2 hrs from now
 	item4 := domain.NewItem("104", "asclark109", nowtime, latertime2, int64(2000)) // $20 start price
-	auctionactive2 := domain.NewAuction(item4, nil, nil, false, false, false)
+	auctionactive2 := domain.NewAuction(item4, nil, nil, false, false, nil)
 
 	auctionRepo.SaveAuction(auction1)
 	auctionRepo.SaveAuction(auction2)
@@ -594,6 +699,12 @@ func main() {
 	auctionRepo.SaveAuction(auctionactive2)
 
 	auctionservice := NewAuctionService(bidRepo, auctionRepo)
+
+	alertCycle := time.Duration(1) * time.Minute
+	finalizeCycle := time.Duration(1) * time.Minute
+	loadAuctionCycle := time.Duration(1) * time.Minute
+	auctionSessionManager := NewAuctionSessionManager(auctionservice, alertCycle, finalizeCycle, loadAuctionCycle)
+	auctionSessionManager.TurnOn()
 
 	go handleHTTPAPIRequests(auctionservice)
 	go handleNewBids(auctionservice)
