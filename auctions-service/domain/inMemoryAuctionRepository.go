@@ -1,6 +1,8 @@
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 type inMemoryAuctionRepository struct {
 	auctions []*Auction
@@ -34,8 +36,13 @@ func (repo *inMemoryAuctionRepository) SaveAuction(auctionToSave *Auction) {
 	for idx, auction := range repo.auctions {
 		if auction.Item.ItemId == auctionToSave.Item.ItemId {
 			repo.auctions[idx] = auctionToSave // overwrite
+			return
 		}
 	}
 	// else its new
 	repo.auctions = append(repo.auctions, auctionToSave)
+}
+
+func (repo *inMemoryAuctionRepository) NumAuctionsSaved() int {
+	return len(repo.auctions)
 }

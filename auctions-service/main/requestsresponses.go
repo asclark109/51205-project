@@ -20,7 +20,7 @@ type ResponseStopAuction struct {
 
 type RequestStopAuction struct {
 	// ItemId            string `json:"itemid"`
-	SellerUserId string `json:"selleruserid"`
+	RequesterUserId string `json:"requesteruserid"`
 }
 
 type RequestCreateAuction struct {

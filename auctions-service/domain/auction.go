@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"fmt"
+	"log"
 	"time"
 )
 
@@ -44,42 +44,42 @@ func (auction *Auction) ProcessNewBid(incomingBid *Bid) (AuctionState, bool) {
 	// if the auction has been finalized, it is archived and we are no longer
 	// considering new bids.
 	if auction.HasFinalization() { // i.e. has state FINALIZED at some known point in time
-		fmt.Println("[Auction] ignoring bid. auction has been finalized.")
+		log.Printf("[Auction %s] ignoring bid. auction has been finalized.\n", auction.Item.ItemId)
 		return FINALIZED, false
 	}
 
 	switch {
 	case stateWhenBidReceived == PENDING:
-		fmt.Println("[Auction] ignoring bid. auction hadn't begun when bid was received.")
+		log.Printf("[Auction %s] ignoring bid. auction hadn't begun when bid was received.\n", auction.Item.ItemId)
 		return PENDING, false
 	case stateWhenBidReceived == CANCELED:
-		fmt.Println("[Auction] ignoring bid. auction was cancelled before bid was received.")
+		log.Printf("[Auction %s] ignoring bid. auction was cancelled before bid was received.\n", auction.Item.ItemId)
 		return CANCELED, false
 	case stateWhenBidReceived == OVER:
-		fmt.Println("[Auction] ignoring bid. auction was over before bid was received.")
+		log.Printf("[Auction %s] ignoring bid. auction was over before bid was received.\n", auction.Item.ItemId)
 		return OVER, false
 	// case stateWhenBidReceived == FINALIZED: HANDLED ABOVE
 	case stateWhenBidReceived == ACTIVE:
 		highestActiveBid := auction.GetHighestActiveBid()
 		if highestActiveBid == nil { // case: there are no active bids
 			if incomingBid.AmountInCents >= auction.Item.StartPriceInCents { // bid amount must at least be start price
-				fmt.Println("[Auction] new top bid!")
+				log.Printf("[Auction %s] new top bid!\n", auction.Item.ItemId)
 				auction.addBid(incomingBid)
 				auction.alertSeller("you have a new top bid!")
 				return ACTIVE, true
 			} else {
-				fmt.Println("[Auction] ignoring bid. bid was under start price.")
+				log.Printf("[Auction %s] ignoring bid. bid was under start price.\n", auction.Item.ItemId)
 				return ACTIVE, false
 			}
 		} else { // case: auction already has at least one active bid
 			if incomingBid.Outbids(highestActiveBid) {
-				fmt.Println("[Auction] new top bid!")
+				log.Printf("[Auction %s] new top bid!\n", auction.Item.ItemId)
 				auction.addBid(incomingBid)
 				auction.alertSeller("you have a new top bid!")
 				auction.alertBidder("your top bid has been out-matched!", highestActiveBid)
 				return ACTIVE, true
 			} else {
-				fmt.Println("[Auction] ignoring bid. bid was under highest bid offer amount.")
+				log.Printf("[Auction %s] ignoring bid. bid was under highest bid offer amount.\n", auction.Item.ItemId)
 				return ACTIVE, false
 			}
 		}
@@ -150,18 +150,19 @@ func (auction *Auction) getStateAtTime(currTime time.Time) AuctionState {
 
 func (auction *Auction) alertSeller(msg string) {
 	sellerUserId := auction.Item.SellerUserId
-	fmt.Printf("STUBBED: sending out request to notify seller (userId=%s,msg=%s)\n", sellerUserId, msg)
+	log.Printf("[Auction %s] STUBBED: sending out request to notify seller (userId=%s,msg=%s)\n", auction.Item.ItemId, sellerUserId, msg)
 }
 
 func (auction *Auction) alertBidder(msg string, bid *Bid) {
 	bidderUserId := bid.BidderUserId
-	fmt.Printf("STUBBED: sending out request to notify bidder (userId=%s,msg=%s)\n", bidderUserId, msg)
+	log.Printf("[Auction %s] STUBBED: sending out request to notify bidder (userId=%s,msg=%s)\n", auction.Item.ItemId, bidderUserId, msg)
 }
 
 func (auction *Auction) Cancel(timeWhenCancellationIssued time.Time) bool {
 
 	// cant issue cancel if there is already a cancellation, or the auction is considered finalized
 	if auction.HasCancellation() || auction.HasFinalization() {
+		log.Printf("[Auction %s] can't cancel self because I am already canceled/finalized.\n", auction.Item.ItemId)
 		return false // only allow 1 cancellation; don't allow any changes once finalized
 	}
 
@@ -171,12 +172,15 @@ func (auction *Auction) Cancel(timeWhenCancellationIssued time.Time) bool {
 	switch {
 	case stateWhenCancellationIssued == PENDING: //
 		auction.cancellation = NewCancellation(timeWhenCancellationIssued)
+		log.Printf("[Auction %s] canceling self (pending auction state).\n", auction.Item.ItemId)
 		return true
 	case stateWhenCancellationIssued == ACTIVE && !auction.HasActiveBid(): //
 		auction.cancellation = NewCancellation(timeWhenCancellationIssued)
+		log.Printf("[Auction %s] canceling self (active auction state but no active bids).\n", auction.Item.ItemId)
 		return true
 	default:
-		return false // state is COMPLETED, or CANCELED already
+		log.Printf("[Auction %s] can't cancel self (auction is over or finalized).\n", auction.Item.ItemId)
+		return false // state is OVER, or CANCELED already
 	}
 }
 
@@ -193,6 +197,7 @@ func (auction *Auction) Stop(timeWhenStopIssued time.Time) bool {
 
 	// cant issue stop if there is already a cancellation, or the auction is considered finalized
 	if auction.HasCancellation() || auction.HasFinalization() {
+		log.Printf("[Auction %s] can't stop self because I am already canceled/finalized.\n", auction.Item.ItemId)
 		return false // only allow 1 cancellation; don't allow any changes once finalized
 	}
 
@@ -202,8 +207,10 @@ func (auction *Auction) Stop(timeWhenStopIssued time.Time) bool {
 	switch {
 	case stateWhenStopIssued == PENDING || stateWhenStopIssued == ACTIVE:
 		auction.cancellation = NewCancellation(timeWhenStopIssued)
+		log.Printf("[Auction %s] stopping self.\n", auction.Item.ItemId)
 		return true
 	default:
+		log.Printf("[Auction %s] can't stop self because of my state.\n", auction.Item.ItemId)
 		return false // state is OVER, CANCELED, FINALIZED; cant stop
 	}
 }
@@ -222,6 +229,7 @@ func (auction *Auction) DeactivateUserBids(userId string, timeWhenUserDeactivate
 	// is only used to determine whether the auction outcome was "set-in-stone" when
 	// the request to deactivate user's bids comes in; this is the only situation where
 	// we refused a deactivateUserBids request
+	log.Printf("[Auction %s] de-activating user's bids (userId=%s)\n", auction.Item.ItemId, userId)
 	stateWhenUserDeactivated := auction.getStateAtTime(timeWhenUserDeactivated)
 	bidsToSave := []*Bid{}
 	if stateWhenUserDeactivated == FINALIZED {
@@ -240,6 +248,8 @@ func (auction *Auction) DeactivateUserBids(userId string, timeWhenUserDeactivate
 }
 
 func (auction *Auction) ActivateUserBids(userId string, timeWhenUserActivated time.Time) (*[]*Bid, bool) {
+
+	log.Printf("[Auction %s] activating user's bids (userId=%s)\n", auction.Item.ItemId, userId)
 	stateWhenUserActivated := auction.getStateAtTime(timeWhenUserActivated)
 	bidsToSave := []*Bid{}
 	if stateWhenUserActivated == FINALIZED {
@@ -266,7 +276,6 @@ func (auction *Auction) IsOverOrCanceledAtTime(atTime time.Time) bool {
 }
 
 func (auction *Auction) Finalize(timeWhenFinalizationIssued time.Time) bool {
-	fmt.Println("[Auction] STUBBED finalizing self...")
 
 	// cant issue finalization if this auction has already been finalized
 	if auction.HasFinalization() {
@@ -277,6 +286,7 @@ func (auction *Auction) Finalize(timeWhenFinalizationIssued time.Time) bool {
 	state := auction.getStateAtTime(timeWhenFinalizationIssued)
 	switch {
 	case state == CANCELED || state == OVER:
+		log.Printf("[Auction %s] STUBBED finalizing self...\n", auction.Item.ItemId)
 		auction.finalization = NewFinalization(timeWhenFinalizationIssued)
 		return true
 	default:
@@ -302,19 +312,165 @@ func (auction *Auction) OverlapsWith(leftBound *time.Time, rightBound *time.Time
 }
 
 func (auction *Auction) SendStartSoonAlertIfApplicable() bool {
+	nowTime := time.Now()
+	stateNow := auction.getStateAtTime(nowTime) // send start soon alert if in pending state; send active now alert if in active state
+
 	if !auction.sentStartSoonAlert {
-		fmt.Println("[Auction] sending out starting soon alert")
-		return true
-	}
+
+		if stateNow == PENDING {
+
+			timeUntilStart := auction.Item.StartTime.Sub(nowTime)
+			hours := timeUntilStart.Hours()
+			mins := timeUntilStart.Minutes()
+
+			if hours < 1 { // send alert if auction is active and end is within 1 hour from now
+				if mins < 60 {
+					log.Printf("[Auction %s] STUBBED sending out starting soon alert; starts in (%f minutes)\n", auction.Item.ItemId, mins)
+				} else {
+					log.Printf("[Auction %s] STUBBED sending out starting soon alert; starts in (%f hours)\n", auction.Item.ItemId, hours)
+				}
+
+				auction.sentStartSoonAlert = true
+				return true
+			}
+
+		} else if stateNow == ACTIVE {
+
+			timeSinceStart := nowTime.Sub(auction.Item.StartTime)
+			hours := timeSinceStart.Hours()
+			mins := timeSinceStart.Minutes()
+
+			if mins < 60 {
+				log.Printf("[Auction %s] STUBBED sending out starting soon alert; auction started (%f minutes) ago!\n", auction.Item.ItemId, mins)
+			} else {
+				log.Printf("[Auction %s] STUBBED sending out starting soon alert; auction started (%f minutes) ago!\n", auction.Item.ItemId, hours)
+			}
+
+			auction.sentStartSoonAlert = true
+			return true
+
+		} else {
+			// otherwise the auction state is over/finalized/canceled,
+			// and we never managed to send out a start soon alert,
+			// so just dont send any alert at all
+			auction.sentStartSoonAlert = true
+			return true
+		}
+	} // already sent start soon alert
 	return false
 }
 
+// func (auction *Auction) timeUntilStart(currTime *time.Time) (*float64, *float64, bool) {
+// 	if currTime.After(auction.Item.StartTime) {
+// 		return nil, nil, false
+// 	} else {
+// 		durationTilStart := auction.Item.StartTime.Sub(*currTime) // e.g. 1 hrs 30 min
+
+// 		hours := durationTilStart.Hours()
+// 		minutes := durationTilStart.Hours()
+// 		return &hours, &minutes, true
+// 	}
+// }
+
+// func (auction *Auction) timeSinceStart(currTime *time.Time) (*float64, *float64, bool) {
+// 	if currTime.Before(auction.Item.StartTime) {
+// 		return nil, nil, false
+// 	} else {
+// 		durationTilStart := (*currTime).Sub(auction.Item.StartTime) // e.g. 1 hrs 30 min
+
+// 		hours := durationTilStart.Hours()
+// 		minutes := durationTilStart.Hours()
+// 		return &hours, &minutes, true
+// 	}
+// }
+
+// func (auction *Auction) timeUntilEnd(currTime *time.Time) (*float64, *float64, bool) {
+// 	if currTime.After(auction.Item.EndTime) {
+// 		return nil, nil, false
+// 	} else {
+// 		durationTilEnd := auction.Item.EndTime.Sub(*currTime) // e.g. 1 hrs 30 min
+
+// 		hours := durationTilEnd.Hours()
+// 		minutes := durationTilEnd.Hours()
+// 		return &hours, &minutes, true
+// 	}
+// }
+
 func (auction *Auction) SendEndSoonAlertIfApplicable() bool {
+
+	nowTime := time.Now()
+	stateNow := auction.getStateAtTime(nowTime) // send end soon alert if in active state; send ended earlier if in over, canceled, completed state
+
 	if !auction.sentEndSoonAlert {
-		fmt.Println("[Auction] sending out ending soon alert")
-		return true
-	}
+
+		if stateNow == ACTIVE {
+			timeUntilEnd := auction.Item.EndTime.Sub(nowTime)
+			hours := timeUntilEnd.Hours()
+			mins := timeUntilEnd.Minutes()
+
+			if hours < 1 { // send alert if auction is active and end is within 1 hour from now
+				if mins < 60 {
+					log.Printf("[Auction %s] STUBBED sending out ending soon alert; ends in (%f minutes)\n", auction.Item.ItemId, mins)
+				} else {
+					log.Printf("[Auction %s] STUBBED sending out ending soon alert; ends in (%f hours)\n", auction.Item.ItemId, hours)
+				}
+
+				auction.sentEndSoonAlert = true
+				return true
+			}
+		} else if stateNow == OVER {
+
+			timeSinceEnd := nowTime.Sub(auction.Item.EndTime)
+			hours := timeSinceEnd.Hours()
+			mins := timeSinceEnd.Minutes()
+
+			if mins < 60 {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction ended (%f minutes) ago!\n", auction.Item.ItemId, mins)
+			} else {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction ended (%f hours) ago!\n", auction.Item.ItemId, hours)
+			}
+
+			auction.sentEndSoonAlert = true
+			return true
+
+		} else if stateNow == CANCELED {
+
+			timeSinceCancel := nowTime.Sub(auction.cancellation.TimeReceived)
+			hours := timeSinceCancel.Hours()
+			mins := timeSinceCancel.Minutes()
+
+			if mins < 60 {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction was canceled (%f minutes) ago!\n", auction.Item.ItemId, mins)
+			} else {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction was canceled (%f hours) ago!\n", auction.Item.ItemId, hours)
+			}
+
+			auction.sentEndSoonAlert = true
+			return true
+
+		} else if stateNow == FINALIZED {
+
+			timeSinceFinalization := nowTime.Sub(auction.finalization.TimeReceived)
+			hours := timeSinceFinalization.Hours()
+			mins := timeSinceFinalization.Minutes()
+
+			if mins < 60 {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction was finalized (%f minutes) ago!\n", auction.Item.ItemId, mins)
+			} else {
+				log.Printf("[Auction %s] STUBBED sending out ending soon alert; auction was finalized (%f hours) ago!\n", auction.Item.ItemId, hours)
+			}
+
+			auction.sentEndSoonAlert = true
+			return true
+
+		} else {
+			// otherwise, the auction state is pending, and we haven't sent any "end soon" alerts.
+			// later when auction becomes active, the alert will go out
+			return false
+		}
+	} // already sent notification;
 	return false
+
 }
 
 // misc helper functions

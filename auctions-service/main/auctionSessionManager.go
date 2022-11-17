@@ -56,9 +56,15 @@ func (auctionSessionManager *AuctionSessionManager) TurnOn() {
 		auctionSessionManager.lastLoadTime = time.Now()
 
 		// bring into memory all auctions with lifecycles (start->end) overlapping with the following time span
-		since := time.Now().Add(-loadBehindDuration) // assumes all auctions prior to this time have been finalized
-		upTo := time.Now().Add(loadAheadDuration)
-		// auctionSessionManager.loadAuctionsIntoMemory(since, upTo)
+		// since := time.Now().Add(-loadBehindDuration) // assumes all auctions prior to this time have been finalized
+
+		// load into memory almost all past auctions because we don't know how long the server has been down.
+		// might need to finalize very old auctions that are over but have not been concluded and archived.
+		// load auctions whose start->end period overlap with the time period from jan 1, 1950 to ~2 hrs
+		// ahead of present moment. this will load in the auctions that'll start <2 hrs from now.
+		since := time.Date(1950, 1, 1, 0, 00, 00, 0, time.UTC) // load from jan 1, 1950
+		upTo := time.Now().Add(loadAheadDuration)              // up to ~ 2hrs from now
+
 		auctionSessionManager.auctionsservice.LoadAuctionsIntoMemory(since, upTo)
 		auctionSessionManager.auctionsservice.SendOutLifeCycleAlerts()
 		auctionSessionManager.auctionsservice.FinalizeAnyPastAuctions(FinalizeDelay)

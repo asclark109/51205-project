@@ -88,7 +88,7 @@ func cancelAuction(auctionservice *AuctionService) http.HandlerFunc {
 		}
 
 		// itemId := requestBody.SellerUserId
-		requesterUserId := requestBody.SellerUserId
+		requesterUserId := requestBody.RequesterUserId
 		cancelAuctionOutcome := auctionservice.CancelAuction(itemId, requesterUserId)
 
 		if cancelAuctionOutcome == auctionNotExist {
@@ -100,6 +100,13 @@ func cancelAuction(auctionservice *AuctionService) http.HandlerFunc {
 
 		if cancelAuctionOutcome == auctionCancellationRequesterIsNotSeller {
 			response.Msg = "requesting user is not the seller of the item in auction. Not allowed to cancel auction."
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		if cancelAuctionOutcome == auctionAlreadyFinalized {
+			response.Msg = "auction is already finalized (archived)."
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(response)
 			return
@@ -138,9 +145,9 @@ func getItemsUserHasBidsOn(auctionservice *AuctionService) http.HandlerFunc {
 		// var res itemIds
 		vars := mux.Vars(r)
 		userId := vars["userId"]
-		fmt.Println(userId)
+		// fmt.Println(userId)
 		itemIds := auctionservice.GetItemsUserHasBidsOn(userId)
-		fmt.Println(itemIds)
+		// fmt.Println(itemIds)
 
 		response := ResponseGetItemsByUserId{*itemIds}
 
@@ -252,6 +259,13 @@ func stopAuction(auctionservice *AuctionService) http.HandlerFunc {
 
 		if stopAuctionOutcome == auctionNotExist {
 			response.Msg = "auction does not exist."
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		if stopAuctionOutcome == auctionAlreadyFinalized {
+			response.Msg = "auction is already finalized (archived)."
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(response)
 			return
@@ -700,14 +714,23 @@ func main() {
 
 	auctionservice := NewAuctionService(bidRepo, auctionRepo)
 
-	alertCycle := time.Duration(1) * time.Minute
-	finalizeCycle := time.Duration(1) * time.Minute
-	loadAuctionCycle := time.Duration(1) * time.Minute
+	alertCycle := time.Duration(10) * time.Second
+	finalizeCycle := time.Duration(10) * time.Second
+	loadAuctionCycle := time.Duration(10) * time.Second
 	auctionSessionManager := NewAuctionSessionManager(auctionservice, alertCycle, finalizeCycle, loadAuctionCycle)
 	auctionSessionManager.TurnOn()
 
 	go handleHTTPAPIRequests(auctionservice)
 	go handleNewBids(auctionservice)
+
+	// lastTime := time.Now()
+	// for {
+
+	// 	if time.Since(lastTime) >= time.Duration(10)*time.Second {
+	// 		fmt.Println(runtime.NumGoroutine())
+	// 		lastTime = time.Now()
+	// 	}
+	// }
 
 	var forever chan struct{}
 	<-forever

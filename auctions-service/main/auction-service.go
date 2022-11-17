@@ -4,7 +4,7 @@ package main
 
 import (
 	"auctions-service/domain"
-	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -19,6 +19,9 @@ type AuctionService struct {
 func NewAuctionService(bidRepo domain.BidRepository, auctionRepo domain.AuctionRepository) *AuctionService {
 	inMemoryAuctions := map[string]*domain.Auction{}
 	mutex := &sync.Mutex{}
+	// comment out lines below to turn ON logging (logging currently turned OFF)
+	// log.SetFlags(0)
+	// log.SetOutput(ioutil.Discard)
 	return &AuctionService{
 		bidRepo:          bidRepo,
 		auctionRepo:      auctionRepo,
@@ -47,12 +50,16 @@ const (
 
 func (auctionservice *AuctionService) CreateAuction(itemId, sellerUserId string, startTime, endTime *time.Time, startPriceInCents int64) AuctionInteractionOutcome {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Println("[AuctionService] creating Auction...")
+	log.Printf("[AuctionService] creating Auction (itemId=%s)...", itemId)
 
 	// confirm well-specified time
 	if !endTime.After(*startTime) {
+		log.Printf("[AuctionService] fail. starttime is not < endtime")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return badTimeSpecified
 	}
 
@@ -60,16 +67,25 @@ func (auctionservice *AuctionService) CreateAuction(itemId, sellerUserId string,
 
 	// confirm auction does not start in the past
 	if creationTime.After(*startTime) {
+		log.Printf("[AuctionService] fail. Auction would start in the past.")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionStartsInPast
 	}
 
-	// if auction to be created will start in sooner than 2 hours, do not proceed
-	if creationTime.Add(time.Duration(2) * time.Hour).After(*startTime) {
+	// if auction to be created will start in sooner than 5 minutes, do not proceed
+	if creationTime.Add(time.Duration(5) * time.Minute).After(*startTime) {
+		log.Printf("[AuctionService] fail. Auction would start in <= 5 minutes. push back start time to later time.")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionWouldStartTooSoon
 	}
 
 	// confirm an auction hasn't already been created for the item
 	if auctionservice.auctionRepo.GetAuction(itemId) != nil {
+		log.Printf("[AuctionService] fail. Auction already exists for item.")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyCreated
 	}
 
@@ -78,17 +94,20 @@ func (auctionservice *AuctionService) CreateAuction(itemId, sellerUserId string,
 
 	auctionservice.auctionRepo.SaveAuction(newAuction)                   // save Auction
 	auctionservice.inMemoryAuctions[newAuction.Item.ItemId] = newAuction // cache Auction
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 	// auctionservice.addAuction(newAuction)
 	// auctionservice.auctionRepo.SaveAuction()
+	log.Printf("[AuctionService] success. Auction created.")
 	return auctionSuccessfullyCreated
 }
 
 func (auctionservice *AuctionService) CancelAuction(itemId string, requesterUserId string) AuctionInteractionOutcome {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Println("[AuctionService] cancelling Auction...")
+	log.Printf("[AuctionService] cancelling Auction (itemId=%s;requesterUserId=%s)...", itemId, requesterUserId)
 	timeWhenCancelReceived := time.Now()
 
 	relevantAuction, ok := auctionservice.inMemoryAuctions[itemId] // lookup in cache
@@ -98,26 +117,41 @@ func (auctionservice *AuctionService) CancelAuction(itemId string, requesterUser
 
 	// confirm auction exists
 	if relevantAuction == nil {
+		log.Printf("[AuctionService] fail. Auction does not exist for itemId=%s ", itemId)
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionNotExist
 	}
 
 	// confirm the person requesting an auction be canceled is the seller of the item
 	if relevantAuction.Item.SellerUserId != requesterUserId {
+		log.Printf("[AuctionService] fail. Requester trying to cancel is not seller of itemId=%s", itemId)
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionCancellationRequesterIsNotSeller
 	}
 
 	// confirm auction isn't already finalized
 	if relevantAuction.HasFinalization() {
+		log.Printf("[AuctionService] fail. Auction already finalized")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyFinalized
 	}
 
 	// confirm auction isn't already canceled
 	if relevantAuction.HasCancellation() {
+		log.Printf("[AuctionService] fail. Auction already canceled")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyCanceled
 	}
 
 	// confirm auction isn't already over (at time)
 	if relevantAuction.IsOverOrCanceledAtTime(timeWhenCancelReceived) {
+		log.Printf("[AuctionService] fail. Auction already over")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyOver
 	}
 
@@ -126,9 +160,11 @@ func (auctionservice *AuctionService) CancelAuction(itemId string, requesterUser
 	wasCanceled := relevantAuction.Cancel(timeWhenCancelReceived) // should always return true...
 	if wasCanceled {
 		auctionservice.auctionRepo.SaveAuction(relevantAuction) // save Auction
+		log.Printf("[AuctionService] success. Auction canceled")
 		// dont cache Auction
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 
 	if wasCanceled {
@@ -140,9 +176,10 @@ func (auctionservice *AuctionService) CancelAuction(itemId string, requesterUser
 
 func (auctionservice *AuctionService) StopAuction(itemId string) AuctionInteractionOutcome {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Println("[AuctionService] stopping Auction.")
+	log.Printf("[AuctionService] stopping Auction (itemId=%s)...", itemId)
 	timeWhenStopReceived := time.Now()
 
 	relevantAuction, ok := auctionservice.inMemoryAuctions[itemId] // lookup in cache
@@ -154,6 +191,9 @@ func (auctionservice *AuctionService) StopAuction(itemId string) AuctionInteract
 
 	// confirm auction exists
 	if relevantAuction == nil {
+		log.Printf("[AuctionService] fail. Auction does not exist for itemId=%s ", itemId)
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionNotExist
 	}
 
@@ -161,16 +201,25 @@ func (auctionservice *AuctionService) StopAuction(itemId string) AuctionInteract
 
 	// confirm auction isn't already finalized
 	if relevantAuction.HasFinalization() {
+		log.Printf("[AuctionService] fail. Auction already finalized")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyFinalized
 	}
 
 	// confirm auction isn't already canceled
 	if relevantAuction.HasCancellation() {
+		log.Printf("[AuctionService] fail. Auction already canceled")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyCanceled
 	}
 
 	// confirm auction isn't already over
 	if relevantAuction.IsOverOrCanceledAtTime(timeWhenStopReceived) {
+		log.Printf("[AuctionService] fail. Auction already over")
+		// log.Printf("[AuctionService] UNLOCK")
+		auctionservice.mutex.Unlock()
 		return auctionAlreadyOver
 	}
 
@@ -180,12 +229,14 @@ func (auctionservice *AuctionService) StopAuction(itemId string) AuctionInteract
 		auctionservice.auctionRepo.SaveAuction(relevantAuction)
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 
 	if wasStopped {
 		if toCache {
 			auctionservice.inMemoryAuctions[itemId] = relevantAuction // cache it
 		}
+		log.Printf("[AuctionService] success. Auction stopped")
 		return auctionSuccessfullyStopped
 	} else {
 		panic("[AuctionService] see StopAuction(). reached end of method without determining what happened (bug).")
@@ -193,18 +244,12 @@ func (auctionservice *AuctionService) StopAuction(itemId string) AuctionInteract
 
 }
 
-// type BidInteractionOutcome string
-
-// const (
-// 	successfullyNewTopBid                   BidInteractionOutcome = "SUCCESSFULLY_NEW_TOP_BID"      // process new bid
-// 	associatedAuctionDoesNotExist
-// )
-
 func (auctionservice *AuctionService) ProcessNewBid(itemId string, bidderUserId string, timeReceived time.Time, amountInCents int64) (AuctionInteractionOutcome, domain.AuctionState, bool) {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Println("[AuctionService] processing new bid.")
+	log.Printf("[AuctionService] processing new bid (itemId=%s;bidderUserId=%s;amountInCents=%d;time=%v)...", itemId, bidderUserId, amountInCents, timeReceived)
 	newId := auctionservice.bidRepo.NextBidId()
 	newBid := domain.NewBid(newId, itemId, bidderUserId, timeReceived, amountInCents, true)
 
@@ -213,6 +258,8 @@ func (auctionservice *AuctionService) ProcessNewBid(itemId string, bidderUserId 
 	if !ok {
 		relevantAuction = auctionservice.auctionRepo.GetAuction(itemId) // get from db if not cached
 		if relevantAuction == nil {
+			// log.Printf("[AuctionService] UNLOCK")
+			auctionservice.mutex.Unlock()
 			return auctionNotExist, domain.UNKNOWN, false // unknown auction state == auction not exist
 		}
 		toCache = true
@@ -226,6 +273,7 @@ func (auctionservice *AuctionService) ProcessNewBid(itemId string, bidderUserId 
 		}
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 
 	return auctionProcessedBid, auctionState, wasNewTopBid
@@ -233,7 +281,7 @@ func (auctionservice *AuctionService) ProcessNewBid(itemId string, bidderUserId 
 }
 
 func (auctionservice *AuctionService) GetItemsUserHasBidsOn(userId string) *[]string {
-	fmt.Println("[AuctionService] getting and returning items.")
+	log.Printf("[AuctionService] getting and returning items that userId=%s has bids on...", userId)
 	bids := auctionservice.bidRepo.GetBidsByUserId(userId) // includes inactive bids
 	itemIds := make([]string, 0)
 	alreadySeenItemIds := map[string]interface{}{}
@@ -247,7 +295,7 @@ func (auctionservice *AuctionService) GetItemsUserHasBidsOn(userId string) *[]st
 }
 
 func (auctionservice *AuctionService) GetActiveAuctions() *[]*domain.Auction {
-	fmt.Println("[AuctionService] getting and returning active auctions.")
+	log.Println("[AuctionService] getting and returning active auctions...")
 	now := time.Now()
 	auctions := auctionservice.auctionRepo.GetAuctions(now, now)
 	return &auctions
@@ -255,9 +303,10 @@ func (auctionservice *AuctionService) GetActiveAuctions() *[]*domain.Auction {
 
 func (auctionservice *AuctionService) ActivateUserBids(userId string) (int, int) {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Printf("[AuctionService] activating user %s bids.", userId)
+	log.Printf("[AuctionService] activating bids for userId=%s...", userId)
 
 	timeWhenUserActivated := time.Now()
 
@@ -288,6 +337,7 @@ func (auctionservice *AuctionService) ActivateUserBids(userId string) (int, int)
 		auctionservice.bidRepo.SaveBid(bid)
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 
 	return len(bidsToUpdateInRepo), numAuctionsWBidUpdates
@@ -296,9 +346,10 @@ func (auctionservice *AuctionService) ActivateUserBids(userId string) (int, int)
 
 func (auctionservice *AuctionService) DeactivateUserBids(userId string) (int, int) {
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Printf("[AuctionService] de-activating user %s bids.", userId)
+	log.Printf("[AuctionService] de-activating bids for userId=%s...", userId)
 
 	timeWhenUserDeactivated := time.Now()
 
@@ -329,6 +380,7 @@ func (auctionservice *AuctionService) DeactivateUserBids(userId string) (int, in
 		auctionservice.bidRepo.SaveBid(bid)
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 
 	return len(bidsToUpdateInRepo), numAuctionsWBidUpdates
@@ -337,20 +389,25 @@ func (auctionservice *AuctionService) DeactivateUserBids(userId string) (int, in
 func (auctionservice *AuctionService) LoadAuctionsIntoMemory(sinceTime time.Time, upToTime time.Time) {
 
 	inMemAuctions := auctionservice.inMemoryAuctions
+	var broughtIntoMemory int
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
-
-	fmt.Println("[AuctionService] loading auctions into memory")
 
 	auctions := auctionservice.auctionRepo.GetAuctions(sinceTime, upToTime)
 	for _, auction := range auctions {
 		if !auction.HasFinalization() { // dont bring into memory if it is a finalized auction
 			if _, ok := (inMemAuctions)[auction.Item.ItemId]; !ok {
 				(inMemAuctions)[auction.Item.ItemId] = auction
+				broughtIntoMemory++
 			}
 		}
 
 	}
+
+	numInRepo := auctionservice.auctionRepo.NumAuctionsSaved()
+	log.Printf("[AuctionService] loaded %d new auctions into memory (%d in memory; %d in repository)", broughtIntoMemory, len(inMemAuctions), numInRepo)
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 }
 
@@ -358,9 +415,10 @@ func (auctionservice *AuctionService) SendOutLifeCycleAlerts() {
 	inMemAuctions := auctionservice.inMemoryAuctions
 	var sentNotif1, sentNotif2 bool
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
 
-	fmt.Println("[AuctionService] sending out life cycle alerts")
+	log.Println("[AuctionService] sending out life cycle alerts...")
 
 	for _, auction := range inMemAuctions {
 		sentNotif1 = auction.SendStartSoonAlertIfApplicable()
@@ -370,13 +428,17 @@ func (auctionservice *AuctionService) SendOutLifeCycleAlerts() {
 		}
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 }
 
 func (auctionservice *AuctionService) FinalizeAnyPastAuctions(finalizeDelay time.Duration) {
 	inMemAuctions := auctionservice.inMemoryAuctions
 
+	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
+
+	log.Println("[AuctionService] finalizing (archiving) any past auctions...")
 
 	for _, auction := range inMemAuctions {
 		wasFinalized := auction.Finalize(time.Now())
@@ -385,5 +447,6 @@ func (auctionservice *AuctionService) FinalizeAnyPastAuctions(finalizeDelay time
 		}
 	}
 
+	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 }
