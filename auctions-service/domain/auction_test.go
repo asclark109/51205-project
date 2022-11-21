@@ -216,7 +216,7 @@ func TestStopAuction(t *testing.T) {
 	bid := NewBid("100", "101", "clark", startime, int64(3000), true)
 	bids := make([]*Bid, 1)
 	bids[0] = bid
-	auction2wbid := NewAuction(item, bids, nil, false, false, nil) // have this auction have an active bid
+	auction2wbid := NewAuction(item, &bids, nil, false, false, nil) // have this auction have an active bid
 	auction3 := NewAuction(item, nil, nil, false, false, nil)
 	auction4 := NewAuction(item, nil, nil, false, false, nil) // have this auction already be canceled
 	auction4.Cancel(startime)

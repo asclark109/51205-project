@@ -26,10 +26,14 @@ type Auction struct {
 	finalization       *Finalization
 }
 
-func NewAuction(item *Item, bids []*Bid, cancellation *Cancellation, sentStartSoonAlert, sentEndSoonAlert bool, finalization *Finalization) *Auction {
+func NewAuction(item *Item, bids *[]*Bid, cancellation *Cancellation, sentStartSoonAlert, sentEndSoonAlert bool, finalization *Finalization) *Auction {
+	if bids == nil {
+		newBidsSlice := make([]*Bid, 0)
+		bids = &newBidsSlice
+	}
 	return &Auction{
 		Item:               item,
-		bids:               bids,             // nil if brand new
+		bids:               *bids,            // nil if brand new
 		cancellation:       cancellation,     // nil if brand new
 		sentStartSoonAlert: sentEndSoonAlert, // false if brand new
 		sentEndSoonAlert:   sentEndSoonAlert, // false if brand new
@@ -273,6 +277,26 @@ func (auction *Auction) IsOverOrCanceledAtTime(atTime time.Time) bool {
 		return true
 	}
 	return false
+}
+
+func (auction *Auction) IsPending(nowTime time.Time) bool {
+	stateAtTime := auction.getStateAtTime(nowTime)
+	return stateAtTime == PENDING
+}
+
+func (auction *Auction) IsActive(nowTime time.Time) bool {
+	stateAtTime := auction.getStateAtTime(nowTime)
+	return stateAtTime == ACTIVE
+}
+
+func (auction *Auction) IsCanceled(nowTime time.Time) bool {
+	stateAtTime := auction.getStateAtTime(nowTime)
+	return stateAtTime == CANCELED
+}
+
+func (auction *Auction) IsFinalized(nowTime time.Time) bool {
+	stateAtTime := auction.getStateAtTime(nowTime)
+	return stateAtTime == FINALIZED
 }
 
 func (auction *Auction) Finalize(timeWhenFinalizationIssued time.Time) bool {

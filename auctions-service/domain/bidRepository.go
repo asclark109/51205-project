@@ -5,5 +5,7 @@ type BidRepository interface {
 	GetBidsByUserId(userId string) *[]*Bid
 	GetBidsByItemId(itemId string) *[]*Bid
 	SaveBid(bid *Bid)
+	SaveBids(bids *[]*Bid)
+	DeleteBid(bidId string)
 	NextBidId() string
 }

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"auctions-service/common"
 	"auctions-service/domain"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"              // acquired by doing 'go get github.com/gorilla/mux.git'
@@ -15,63 +16,17 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go" // acquired by doing 'go get github.com/rabbitmq/amqp091-go'
 )
 
-var Articles []Article // like a database
-var db *sql.DB
-
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Welcome to the HomePage!")
 	fmt.Println("Endpoint Hit: homePage")
 }
 
-type Article struct {
-	Title   string `json:"Title"`
-	Desc    string `json:"desc"`
-	Content string `json:"content"`
-}
-
-func getrowsindb(db *sql.DB) http.HandlerFunc {
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		var res CustomerData
-		// var todos []string
-		rows, err := db.Query("SELECT * FROM customer LIMIT 10")
-		defer rows.Close()
-		if err != nil {
-			log.Fatalln(err)
-			// c.JSON("An error occured")
-		}
-		for rows.Next() {
-			if err := rows.Scan(
-				&res.Customer_id,
-				&res.Store_id,
-				&res.First_name,
-				&res.Last_name,
-				&res.Email,
-				&res.Address_id,
-				&res.Activebool,
-				&res.Create_date,
-				&res.Last_update,
-				&res.Active,
-			); err != nil {
-				fmt.Println(err.Error())
-			}
-			// todos = append(todos, res)
-			fmt.Println(res)
-		}
-	}
-
-}
-
 func cancelAuction(auctionservice *AuctionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// var res itemIds
 		vars := mux.Vars(r)
 		itemId := vars["itemId"]
 
-		// reqBody, _ := ioutil.ReadAll(r.Body) // read details
-
 		var requestBody RequestStopAuction // parse request into a struct with assumed structure
-		// err := json.Unmarshal(reqBody, &requestBody)
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
 
 		var response ResponseStopAuction
@@ -81,13 +36,10 @@ func cancelAuction(auctionservice *AuctionService) http.HandlerFunc {
 			w.WriteHeader(http.StatusBadRequest)
 			response.Msg = "request body was ill-formed"
 
-			// json.Marshal()
 			json.NewEncoder(w).Encode(response)
 			return
-			// w.Write(js)
 		}
 
-		// itemId := requestBody.SellerUserId
 		requesterUserId := requestBody.RequesterUserId
 		cancelAuctionOutcome := auctionservice.CancelAuction(itemId, requesterUserId)
 
@@ -160,44 +112,15 @@ func getItemsUserHasBidsOn(auctionservice *AuctionService) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(js)
-		// // var todos []string
-		// rows, err := db.Query("SELECT * FROM customer LIMIT 10")
-		// defer rows.Close()
-		// if err != nil {
-		// 	log.Fatalln(err)
-		// 	// c.JSON("An error occured")
-		// }
-		// for rows.Next() {
-		// 	if err := rows.Scan(
-		// 		&res.Customer_id,
-		// 		&res.Store_id,
-		// 		&res.First_name,
-		// 		&res.Last_name,
-		// 		&res.Email,
-		// 		&res.Address_id,
-		// 		&res.Activebool,
-		// 		&res.Create_date,
-		// 		&res.Last_update,
-		// 		&res.Active,
-		// 	); err != nil {
-		// 		fmt.Println(err.Error())
-		// 	}
-		// 	// todos = append(todos, res)
-		// 	fmt.Println(res)
-		// }
 	}
-
 }
 
 func getActiveAuctions(auctionservice *AuctionService) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		// var res itemIds
-		// vars := mux.Vars(r)
-		// userId := vars["userId"]
-		// fmt.Println(userId)
+
 		activeAuctions := auctionservice.GetActiveAuctions()
-		// fmt.Println(itemIds)
+
 		exportedAuctions := make([]JsonAuction, len(*activeAuctions))
 		for i, activeAuction := range *activeAuctions {
 			exportedAuctions[i] = *ExportAuction(activeAuction)
@@ -210,51 +133,23 @@ func getActiveAuctions(auctionservice *AuctionService) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// json.NewEncoder(w).Encode(article)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(js)
-		// // var todos []string
-		// rows, err := db.Query("SELECT * FROM customer LIMIT 10")
-		// defer rows.Close()
-		// if err != nil {
-		// 	log.Fatalln(err)
-		// 	// c.JSON("An error occured")
-		// }
-		// for rows.Next() {
-		// 	if err := rows.Scan(
-		// 		&res.Customer_id,
-		// 		&res.Store_id,
-		// 		&res.First_name,
-		// 		&res.Last_name,
-		// 		&res.Email,
-		// 		&res.Address_id,
-		// 		&res.Activebool,
-		// 		&res.Create_date,
-		// 		&res.Last_update,
-		// 		&res.Active,
-		// 	); err != nil {
-		// 		fmt.Println(err.Error())
-		// 	}
-		// 	// todos = append(todos, res)
-		// 	fmt.Println(res)
-		// }
 	}
 
 }
 
 func stopAuction(auctionservice *AuctionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// var res itemIds
 		vars := mux.Vars(r)
 		itemId := vars["itemId"]
 
-		// var requestBody RequestCreateAuction // parse request into a struct with assumed structure
+		// var requestBody RequestStopAuction // parse request into a struct with assumed structure
 		var response ResponseStopAuction
 
 		w.Header().Set("Content-Type", "application/json")
 
-		fmt.Println(itemId)
 		stopAuctionOutcome := auctionservice.StopAuction(itemId)
 
 		if stopAuctionOutcome == auctionNotExist {
@@ -304,10 +199,7 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 		// vars := mux.Vars(r)
 		// itemId := vars["itemId"]
 
-		// reqBody, _ := ioutil.ReadAll(r.Body) // read details
-
 		var requestBody RequestCreateAuction // parse request into a struct with assumed structure
-		// err := json.Unmarshal(reqBody, &requestBody)
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
 
 		fmt.Println(requestBody)
@@ -317,25 +209,14 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			response.Msg = "request body was ill-formed"
-
-			// json.Marshal()
 			json.NewEncoder(w).Encode(response)
 			return
-			// w.Write(js)
 		}
-
-		// interpret body
-
-		// js, err := json.Marshal(response)
-		// if err != nil {
-		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-		// 	return
-		// }
 
 		itemId := requestBody.ItemId
 		sellerUserId := requestBody.SellerUserId
-		startTime, err1 := interpretTimeStr(requestBody.StartTime)
-		endTime, err2 := interpretTimeStr(requestBody.EndTime)
+		startTime, err1 := common.InterpretTimeStr(requestBody.StartTime)
+		endTime, err2 := common.InterpretTimeStr(requestBody.EndTime)
 		startPriceInCents := requestBody.StartPriceInCents
 
 		if err1 != nil || err2 != nil {
@@ -346,8 +227,6 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 		}
 
 		createAuctionOutcome := auctionservice.CreateAuction(itemId, sellerUserId, startTime, endTime, startPriceInCents)
-
-		// var response ResponseCreateAuction
 
 		if createAuctionOutcome == auctionAlreadyCreated {
 			response.Msg = "an auction already exists for this item."
@@ -387,31 +266,6 @@ func createAuction(auctionservice *AuctionService) http.HandlerFunc {
 
 		panic("see createAuction() in main.go; could not determine an outcome for create Auction request")
 
-		// // var todos []string
-		// rows, err := db.Query("SELECT * FROM customer LIMIT 10")
-		// defer rows.Close()
-		// if err != nil {
-		// 	log.Fatalln(err)
-		// 	// c.JSON("An error occured")
-		// }
-		// for rows.Next() {
-		// 	if err := rows.Scan(
-		// 		&res.Customer_id,
-		// 		&res.Store_id,
-		// 		&res.First_name,
-		// 		&res.Last_name,
-		// 		&res.Email,
-		// 		&res.Address_id,
-		// 		&res.Activebool,
-		// 		&res.Create_date,
-		// 		&res.Last_update,
-		// 		&res.Active,
-		// 	); err != nil {
-		// 		fmt.Println(err.Error())
-		// 	}
-		// 	// todos = append(todos, res)
-		// 	fmt.Println(res)
-		// }
 	}
 }
 
@@ -421,10 +275,7 @@ func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
 		// vars := mux.Vars(r)
 		// itemId := vars["itemId"]
 
-		// reqBody, _ := ioutil.ReadAll(r.Body) // read details
-
 		var requestBody RequestProcessNewBid // parse request into a struct with assumed structure
-		// err := json.Unmarshal(reqBody, &requestBody)
 		err := json.NewDecoder(r.Body).Decode(&requestBody)
 
 		fmt.Println(requestBody)
@@ -435,19 +286,9 @@ func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
 			w.WriteHeader(http.StatusBadRequest)
 			response.Msg = "request body was ill-formed"
 
-			// json.Marshal()
 			json.NewEncoder(w).Encode(response)
 			return
-			// w.Write(js)
 		}
-
-		// interpret body
-
-		// js, err := json.Marshal(response)
-		// if err != nil {
-		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-		// 	return
-		// }
 
 		itemId := requestBody.ItemId
 		bidderUserId := requestBody.BidderUserId
@@ -463,10 +304,6 @@ func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
 		}
 
 		auctionInteractionOutcome, auctionState, wasNewTopBid := auctionservice.ProcessNewBid(itemId, bidderUserId, timeReceived, amountInCents)
-
-		// createAuctionOutcome := auctionservice.CreateAuction(itemId, sellerUserId, startTime, endTime, startPriceInCents)
-
-		// var response ResponseCreateAuction
 
 		if auctionInteractionOutcome == auctionNotExist {
 			response.Msg = "auction does not exist."
@@ -500,15 +337,15 @@ func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
 			return
 		}
 
-		// success case 1
 		if auctionState == domain.ACTIVE && !wasNewTopBid {
 			response.Msg = "bid was not a new top bid because it was under start price or under the current top bid price."
 			response.WasNewTopBid = false
+			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(response)
 			return
 		}
 
-		// success case 1
+		// success case 2
 		if auctionState == domain.ACTIVE && wasNewTopBid {
 			response.Msg = "successfully processed bid; bid was new top bid!"
 			response.WasNewTopBid = true
@@ -519,22 +356,6 @@ func processNewBid(auctionservice *AuctionService) http.HandlerFunc {
 		panic("see processNewBid() in main.go; could not determine an outcome for place new Bid request")
 
 	}
-}
-
-func interpretTimeStr(timeStr string) (*time.Time, error) {
-	layout := "2006-01-02 15:04:05.000000"
-	t, err := time.Parse(layout, timeStr)
-	return &t, err
-}
-
-func returnAllArticles(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Endpoint Hit: returnAllArticles")
-	json.NewEncoder(w).Encode(Articles)
-}
-
-func returnItemsUserHasBidsOn(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Endpoint Hit: returnAllArticles")
-	json.NewEncoder(w).Encode(Articles)
 }
 
 func failOnError(err error, msg string) {
@@ -621,7 +442,7 @@ func handleNewBids(auctionservice *AuctionService) {
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
 			// characterize
-			// auctionservice.ProcessNewBid()
+			// TODO: auctionservice.ProcessNewBid()
 		}
 	}()
 
@@ -657,26 +478,16 @@ func handleHTTPAPIRequests(auctionservice *AuctionService) {
 	log.Fatal(http.ListenAndServe(":10000", myRouter))
 }
 
-// func handleRabbitMQEvents() {
+const (
+	inMemoryFlag string = "inmemory"
+	sqlFlag      string = "sql"
+)
 
-// }
+func getUsageStr() string {
+	return "Usage: main DBTYPE\n" + fmt.Sprintf("    DBTYPE = one of ['%s','%s']; which database to use\n", inMemoryFlag, sqlFlag)
+}
 
-func main() {
-	fmt.Println("Rest API v2.0 - Mux Routers")
-	// Connect to database
-	// connStr := "postgresql://postgres:mysecret@localhost:5432/dvdrental?sslmode=disable"
-	// db, err := sql.Open("postgres", connStr)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// go handleHTTPAPIRequests(db)
-	// Articles = []Article{
-	// 	Article{Title: "Hello", Desc: "Article Description", Content: "Article Content"},
-	// 	Article{Title: "Hello 2", Desc: "Article Description", Content: "Article Content"},
-	// }
-	bidRepo := domain.NewInMemoryBidRepository(false) // do not use seed; assign random uuid's
-	auctionRepo := domain.NewInMemoryAuctionRepository()
-
+func fillReposWDummyData(bidRepo domain.BidRepository, auctionRepo domain.AuctionRepository) {
 	// fill bid repo with some bids
 	time1 := time.Date(2014, 2, 4, 00, 00, 00, 0, time.UTC)
 	time2 := time.Date(2014, 2, 4, 00, 00, 00, 0, time.UTC)    // same as time1
@@ -711,15 +522,63 @@ func main() {
 	auctionRepo.SaveAuction(auction2)
 	auctionRepo.SaveAuction(auctionactive)
 	auctionRepo.SaveAuction(auctionactive2)
+}
 
+func main() {
+
+	argsWithoutProg := os.Args[1:]
+	if len(argsWithoutProg) != 1 {
+		fmt.Println("incorrect number of args provided")
+		fmt.Println(getUsageStr())
+		return
+	}
+
+	flagStr := argsWithoutProg[0]
+	if !(flagStr == inMemoryFlag || flagStr == sqlFlag) {
+		fmt.Println("unrecgonized arg provided: ", flagStr)
+		fmt.Println(getUsageStr())
+		return
+	}
+
+	// intialize repositories
+	var bidRepo domain.BidRepository
+	var auctionRepo domain.AuctionRepository
+	if flagStr == inMemoryFlag {
+		fmt.Println("using in-memory repositories...")
+		bidRepo = domain.NewInMemoryBidRepository(false) // do not use seed; assign random uuid's
+		auctionRepo = domain.NewInMemoryAuctionRepository()
+	} else if flagStr == sqlFlag {
+		fmt.Println("using Postgres SQL based repositories...")
+		bidRepo = domain.NewPostgresSQLBidRepository(false)           // do not use seed; assign random uuid's
+		auctionRepo = domain.NewPostgresSQLAuctionRepository(bidRepo) // uses bidRepo to add references to Auction objs
+	} else {
+		fmt.Println("unrecgonized arg provided: ", flagStr)
+		fmt.Println(getUsageStr())
+		return
+	}
+
+	fmt.Println("Auctions Service API v1.0 - [Mux Routers impl for HTTP/RESTful API; RabbitMQ for messaging]")
+
+	// initialize service
 	auctionservice := NewAuctionService(bidRepo, auctionRepo)
 
+	// spawn goroutines that will invoke auctionservice periodically to do internal house-keeping;
+	// this is encapsulated in AuctionSessionManager; note: AuctionSessionManager.TurnOn() spawns
+	// 3 goroutines that each are responsible for periodically proding the auctionservice to send
+	// out alerts, finalize (archive) auctions that are over, and load into memory auctions that start
+	// soon. these goroutines return (stop) when an internal state variable of AuctionSessionManager becomes
+	// false. This works but is not safe as is. AuctionSessionManager.TurnOn() spawns go routines, which
+	// terminate when the state var goes false. AuctionSessionManager.TurnOff() sets the state var to false.
+	// thus, a quick sequence of calling TurnOn(), TurnOff(), TurnOn() may result in 3 new goroutines getting
+	// spawned without the original 3 terminating. should be refactored to use a bool channels
+	// that are passed into the spawned goroutines instead to avoid this issue.
 	alertCycle := time.Duration(10) * time.Second
 	finalizeCycle := time.Duration(10) * time.Second
 	loadAuctionCycle := time.Duration(10) * time.Second
 	auctionSessionManager := NewAuctionSessionManager(auctionservice, alertCycle, finalizeCycle, loadAuctionCycle)
 	auctionSessionManager.TurnOn()
 
+	// spawn goroutines that will invoke auctionservice upon incoming HTTP/RESTful requests and messages
 	go handleHTTPAPIRequests(auctionservice)
 	go handleNewBids(auctionservice)
 

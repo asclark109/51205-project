@@ -59,6 +59,26 @@ func (repo *inMemoryBidRepository) SaveBid(bidToSave *Bid) {
 	repo.bids = append(repo.bids, bidToSave)
 }
 
+func (repo *inMemoryBidRepository) SaveBids(bidsToSave *[]*Bid) {
+	for _, bid := range *bidsToSave {
+		repo.SaveBid(bid)
+	}
+}
+
+func (repo *inMemoryBidRepository) DeleteBid(bidId string) {
+	found := false
+	var idxToDelete int
+	for idx, bid := range repo.bids {
+		if bid.BidId == bidId {
+			found = true
+			idxToDelete = idx
+		}
+	}
+	if found {
+		repo.bids = append(repo.bids[:idxToDelete], repo.bids[idxToDelete+1:]...)
+	}
+}
+
 func (repo *inMemoryBidRepository) NextBidId() string {
 	return uuid.New().String()
 }

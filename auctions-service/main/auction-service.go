@@ -4,6 +4,7 @@ package main
 
 import (
 	"auctions-service/domain"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -296,8 +297,15 @@ func (auctionservice *AuctionService) GetItemsUserHasBidsOn(userId string) *[]st
 
 func (auctionservice *AuctionService) GetActiveAuctions() *[]*domain.Auction {
 	log.Println("[AuctionService] getting and returning active auctions...")
-	now := time.Now()
-	auctions := auctionservice.auctionRepo.GetAuctions(now, now)
+	nowTime := time.Now()
+	auctions := auctionservice.auctionRepo.GetAuctions(nowTime, nowTime) // all auctions whose start->end time overlaps with nowTime
+	// filter down to only active auctions (some auctions may be canceled / finalized even though their start->end time overlaps w now)
+	activeAuctions := make([]*domain.Auction, 0)
+	for _, auction := range auctions {
+		if auction.IsActive(nowTime) {
+			activeAuctions = append(activeAuctions, auction)
+		}
+	}
 	return &auctions
 }
 
@@ -391,8 +399,27 @@ func (auctionservice *AuctionService) LoadAuctionsIntoMemory(sinceTime time.Time
 	inMemAuctions := auctionservice.inMemoryAuctions
 	var broughtIntoMemory int
 
+	var InMemoryPending int
+	var InMemoryActive int
+	var InMemoryCanceled int
+	var InMemoryFinalized int
+
 	// log.Printf("[AuctionService] LOCK")
 	auctionservice.mutex.Lock()
+
+	nowTime := time.Now()
+	for _, auction := range inMemAuctions {
+		switch {
+		case auction.IsPending(nowTime):
+			InMemoryPending++
+		case auction.IsActive(nowTime):
+			InMemoryActive++
+		case auction.IsCanceled(nowTime):
+			InMemoryCanceled++
+		case auction.IsFinalized(nowTime):
+			InMemoryFinalized++
+		}
+	}
 
 	auctions := auctionservice.auctionRepo.GetAuctions(sinceTime, upToTime)
 	for _, auction := range auctions {
@@ -402,11 +429,12 @@ func (auctionservice *AuctionService) LoadAuctionsIntoMemory(sinceTime time.Time
 				broughtIntoMemory++
 			}
 		}
-
 	}
 
 	numInRepo := auctionservice.auctionRepo.NumAuctionsSaved()
-	log.Printf("[AuctionService] loaded %d new auctions into memory (%d in memory; %d in repository)", broughtIntoMemory, len(inMemAuctions), numInRepo)
+	memoryState := fmt.Sprintf("%d/%d/%d/%d", InMemoryPending, InMemoryActive, InMemoryCanceled, InMemoryFinalized)
+	log.Printf("[AuctionService] loaded %d new auctions into memory ([Pending/Active/Canceled/Finalized] %s in memory; %d total in repository;)", broughtIntoMemory, memoryState, numInRepo)
+
 	// log.Printf("[AuctionService] UNLOCK")
 	auctionservice.mutex.Unlock()
 }

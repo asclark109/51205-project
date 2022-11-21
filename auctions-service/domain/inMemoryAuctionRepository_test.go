@@ -24,7 +24,7 @@ func TestGetAuction(t *testing.T) {
 	starttime := timeReceived.Add(-time.Duration(10) * time.Minute)
 	endtime := starttime.Add(time.Duration(10) * time.Hour)
 	item201 := NewItem("201", "sellerMike", starttime, endtime, int64(2000))
-	auction := NewAuction(item201, bids201, nil, false, false, nil)
+	auction := NewAuction(item201, &bids201, nil, false, false, nil)
 	auctionRepo := NewInMemoryAuctionRepository()
 	auctionRepo.SaveAuction(auction)
 
@@ -52,7 +52,7 @@ func TestSaveAuction(t *testing.T) {
 	starttime := timeReceived.Add(-time.Duration(10) * time.Minute)
 	endtime := starttime.Add(time.Duration(10) * time.Hour)
 	item201 := NewItem("201", "sellerMike", starttime, endtime, int64(2000))
-	auction := NewAuction(item201, bids201, nil, false, false, nil)
+	auction := NewAuction(item201, &bids201, nil, false, false, nil)
 	auctionRepo := NewInMemoryAuctionRepository()
 
 	if auctionRepo.NumAuctionsSaved() != 0 {
@@ -82,7 +82,7 @@ func TestSaveAuction(t *testing.T) {
 	starttime2 := timeReceived.Add(-time.Duration(10) * time.Minute)
 	endtime2 := starttime.Add(time.Duration(10) * time.Hour)
 	item202 := NewItem("202", "sellerMike", starttime2, endtime2, int64(2000))
-	auction2 := NewAuction(item202, bids202, nil, false, false, nil)
+	auction2 := NewAuction(item202, &bids202, nil, false, false, nil)
 
 	// now save the same auction, and confirm there are two auctions saved in the repo
 	auctionRepo.SaveAuction(auction2)

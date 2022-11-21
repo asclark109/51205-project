@@ -68,11 +68,3 @@ func ExportAuction(auction *domain.Auction) *JsonAuction {
 		EndTime:           auction.Item.EndTime.Format(layout),
 	}
 }
-
-// type ResponseCreateAuction struct {
-
-// }
-
-// Item         *Item
-// bids         []*Bid // slice of pointers to bids; new higher bids get appended on the end
-// cancellation *Cancellation

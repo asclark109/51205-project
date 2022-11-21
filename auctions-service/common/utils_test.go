@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ func TestInterpretTime(t *testing.T) {
 	time := time.Date(2022, 12, 1, 15, 15, 00, 0, time.UTC)
 	myTimeStr := "2022-12-01 15:15:00.000000"
 
-	result, _ := interpretTimeStr(myTimeStr)
+	result, _ := InterpretTimeStr(myTimeStr)
 	expected := time
 
 	if *result != expected {
